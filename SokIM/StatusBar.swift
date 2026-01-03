@@ -28,6 +28,7 @@ class StatusBar {
     private let capsLockItem = NSMenuItem()
     private let rightCommandItem = NSMenuItem()
     private let rightOptionItem = NSMenuItem()
+    private let f18Item = NSMenuItem()
     private let commandSpaceItem = NSMenuItem()
     private let shiftSpaceItem = NSMenuItem()
     private let controlSpaceItem = NSMenuItem()
@@ -91,6 +92,12 @@ class StatusBar {
         rightOptionItem.target = self
         rightOptionItem.action = #selector(toggleRightOption)
         menu.addItem(rightOptionItem)
+
+        f18Item.title = "F18"
+        f18Item.state = Preferences.rotateShortcuts.contains(.f18) ? .on : .off
+        f18Item.target = self
+        f18Item.action = #selector(toggleF18)
+        menu.addItem(f18Item)
 
         commandSpaceItem.title = "⌘스페이스"
         commandSpaceItem.state = Preferences.rotateShortcuts.contains(.commandSpace) ? .on : .off
@@ -236,6 +243,22 @@ class StatusBar {
         } else {
             rotateShortcuts.remove(.rightOption)
             rightOptionItem.state = .off
+        }
+        Preferences.rotateShortcuts = rotateShortcuts
+
+        statusItem.button?.performClick(nil)
+    }
+
+    @objc func toggleF18(sender: NSMenuItem) {
+        debug()
+
+        var rotateShortcuts = Preferences.rotateShortcuts
+        if sender.state == .off {
+            rotateShortcuts.insert(.f18)
+            f18Item.state = .on
+        } else {
+            rotateShortcuts.remove(.f18)
+            f18Item.state = .off
         }
         Preferences.rotateShortcuts = rotateShortcuts
 

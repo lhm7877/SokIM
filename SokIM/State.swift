@@ -99,6 +99,14 @@ struct State: CustomStringConvertible {
             let isOptionDown = modifier[.leftOption] == .keyDown || modifier[.rightOption] == .keyDown
             let isControlDown = modifier[.leftControl] == .keyDown || modifier[.rightControl] == .keyDown
 
+            // F18: keyDown인 경우 한/A 전환
+            if usage == SpecialUsage.f18.rawValue
+                && Preferences.rotateShortcuts.contains(.f18) {
+                rotate()
+
+                return
+            }
+
             // Command/Shift/Control + Space: keyDown인 경우 한/A 전환 // TODO: #15
             if (
                 isCommandDown

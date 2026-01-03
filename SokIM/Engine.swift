@@ -20,6 +20,7 @@ enum ModifierUsage: UInt32 {
 /** 특수한 키 -> USB HID Usage 매핑 */
 enum SpecialUsage: UInt32 {
     case space = 0x2C
+    case f18 = 0x6D
 }
 
 /**

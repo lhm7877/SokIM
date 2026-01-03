@@ -227,6 +227,13 @@ class InputMonitor {
             let isShiftDown = modifier[.leftShift] == .keyDown || modifier[.rightShift] == .keyDown
             let isControlDown = modifier[.leftControl] == .keyDown || modifier[.rightControl] == .keyDown
 
+            // 별도 처리: F18: 한/A 표시만 *우선 처리*, 실제 처리는 State에서
+            if usage == SpecialUsage.f18.rawValue
+                && Preferences.rotateShortcuts.contains(.f18) {
+                appDelegate()?.commit()
+                appDelegate()?.statusBar.rotateEngine()
+            }
+
             // 별도 처리: Command/Shift/Control + Space: 한/A 표시만 *우선 처리*, 실제 처리는 State에서 // TODO: #15
             if (
                 isCommandDown

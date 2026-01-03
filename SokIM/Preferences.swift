@@ -5,6 +5,7 @@ enum RotateShortcutType: String {
     case capsLock = "CapsLock"
     case rightCommand = "RightCommand"
     case rightOption = "RightOption"
+    case f18 = "F18"
     case commandSpace = "CommandSpace"
     case shiftSpace = "ShiftSpace"
     case controlSpace = "ControlSpace"
