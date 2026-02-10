@@ -1,12 +1,13 @@
 import Cocoa
 import InputMethodKit
+import UserNotifications
 
 func appDelegate() -> AppDelegate? {
     return NSApp.delegate as? AppDelegate
 }
 
 @main
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     // swiftlint:disable force_cast
     private var server: IMKServer = IMKServer.init(
         name: (Bundle.main.infoDictionary!["InputMethodConnectionName"] as! String),
@@ -93,10 +94,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startCheckingUpdate() {
-        let block: (Timer) -> Void = { [self] _ in
-            debug()
+        debug()
 
-            Task {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+
+        Task {
+            _ = try? await center.requestAuthorization(options: [.alert, .sound])
+            var deliveredName = ""
+
+            while true {
+                debug()
+
                 let config = URLSessionConfiguration.ephemeral
                 config.timeoutIntervalForResource = 15
                 let url = URL(string: "https://api.github.com/repos/kiding/SokIM/releases/latest")!
@@ -129,10 +138,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         statusBar.setStatus("📥")
                         statusBar.setNotice("📥 새로운 업데이트가 있습니다.")
                     }
+
+                    if deliveredName != name {
+                        deliveredName = name
+
+                        let content = UNMutableNotificationContent()
+                        content.title = "속 입력기"
+                        content.body = "\(name) 업데이트가 있습니다."
+                        let request = UNNotificationRequest(identifier: name, content: content, trigger: nil)
+                        _ = try? await center.add(request)
+                    }
                 }
+
+                _ = try? await Task.sleep(for: .seconds(86400 * 2))
             }
         }
-        block(Timer.scheduledTimer(withTimeInterval: 86400 * 2, repeats: true, block: block))
+    }
+
+    internal func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        debug()
+
+        statusBar.checkUpdate(sender: nil)
     }
 
     private func startMonitorsInitially() {
@@ -196,6 +225,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return false
         }
         self.sender = sender
+        let strategy = strategy(for: sender)
 
         // 별도 처리: 암호 필드에 포커스된 경우 OS가 대신 처리
         if IsSecureEventInputEnabled() {
@@ -209,7 +239,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // inputs 처리 시작
         var inputs = inputMonitor.flush()
-        filterQuirks(&inputs, sender: sender)
         filterInputs(&inputs, event: event)
 
         // 기존 state 보존
@@ -227,7 +256,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             state.backspaceComposing()
 
             // sender에 백스페이스 반영
-            let handled = strategy(for: sender).backspace(from: state, to: sender, with: oldState)
+            let handled = strategy.backspace(from: state, to: sender, with: oldState.composing)
 
             /*
              처리가 완료된 경우 -> 완성만 버림
@@ -238,16 +267,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return handled
         }
 
+        let tuple = state.engine.eventToTuple(event)
         if (
             // event가 engine이 처리할 수 없는 글자인 경우 (예: Cmd + 방향 키 등)
-            state.engine.eventToTuple(event) == nil
+            tuple == nil
         ) || (
             // event가 state가 입력할 문자열과 완전히 동일한 경우
             state.composed == event.characters
             && state.composing == ""
         ) {
             // sender에 oldState 그대로 조합 종료 반영
-            strategy(for: sender).commit(from: oldState, to: sender)
+            strategy.commit(from: oldState, to: sender)
 
             // state 새로운 완성/조합 버림
             state.clear(composed: true, composing: true)
@@ -266,7 +296,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // sender에 state 새로운 완성/조합 진행 반영
-        strategy(for: sender).next(from: state, to: sender, with: oldState)
+        if !strategy.next(from: state, to: sender, with: oldState.composing) {
+            // 입력 실패한 경우 tuple만 입력
+            state.clear(composed: true, composing: true)
+            if let tuple { state.next(tuple) }
+            _ = strategy.next(from: state, to: sender, with: "")
+        }
 
         // state 새로운 완성 버림
         state.clear(composed: true, composing: false)
@@ -349,31 +384,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         debug("flags: \(flags)")
 
         inputs = inputs.indices.filter { flags[$0] }.map { inputs[$0] }
-    }
-
-    /** 전처리: 특정 앱에 대해 입력 정리 */
-    private func filterQuirks(_ inputs: inout [Input], sender: IMKTextInput) {
-        debug()
-
-        // 특정 입력이 있는 경우 이후 입력만 처리, 단 modifier는 언제나 처리
-        func ignoreBefore(usages: [UInt32], last: Bool = false) {
-            let find = last ? inputs.lastIndex : inputs.firstIndex
-            if let idx = try? find({ $0.type == .keyDown && usages.contains($0.usage) }) {
-                inputs = inputs.indices
-                    .filter { $0 > idx || ModifierUsage(rawValue: inputs[$0].usage) != nil }
-                    .map { inputs[$0] }
-                state.clear(composed: true, composing: true)
-            }
-        }
-
-        switch sender.bundleIdentifier() {
-        case "com.microsoft.Powerpoint": // 파워포인트의 경우 "엔터" 이벤트가 입력기로 전달되지 않음
-            ignoreBefore(usages: [0x28, 0x58], last: true)
-        case "com.apple.Spotlight": // Spotlight의 경우 "탭" 이벤트가 입력기로 전달되지 않음
-            ignoreBefore(usages: [0x2B])
-        default:
-            break
-        }
     }
 
     /** engine 선택 외 모든 상태 버림 */
